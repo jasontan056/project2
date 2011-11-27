@@ -97,6 +97,14 @@ int main( int argc, char *argv[] )
   fp = fopen( argv[ 3 ], "w" );
 
   // receives packets, writing them to the file
+
+
+  struct packet ack;
+  ack.dPacket.seqNum = 0;
+  ack.dPacket.type = 1; 
+  ack.dPacket.dataLength = 0;
+
+
   while ( 1 ) {
     if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
 				&their_addr, &addr_len ) ) == -1 ) {
@@ -112,6 +120,18 @@ int main( int argc, char *argv[] )
     if ( p->checksum != checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ) ) {
       fprintf( stderr, "Received packet fails checksum\n" );
     }
+
+   //if the packet we received is what we expected, send ACK with new seqNum we want.
+   if(ack.dPacket.seqNum == p->dPacket.seqNum){
+	ack.dPacket.seqNum++;
+	 if ( ( numbytes = sendto( sockfd,(char *) &ack, sizeof (struct packet), 0,
+				    (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 ) {
+	    perror("sendto");
+	    exit(1);
+	  }
+
+}
+
     printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum,
 	    p->dPacket.type, p->dPacket.dataLength );
     fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),

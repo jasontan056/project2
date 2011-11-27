@@ -30,6 +30,7 @@ int main( int argc, char *argv[] )
   int portno;
   int seqNum;
   char buf[ MAXBUFLEN ];
+  char packetBuf[ sizeof( struct packet ) ];
   socklen_t addr_len;
   struct packet p;
 
@@ -88,6 +89,8 @@ int main( int argc, char *argv[] )
 
   seqNum = 0;
   // sends file in packets
+while(1)
+{
   while ( !feof( fp ) ) {
     // build packet
     p.dPacket.dataLength = fread( p.dPacket.data, sizeof( p.dPacket.data[0] ),
@@ -111,6 +114,20 @@ int main( int argc, char *argv[] )
     seqNum++;
   }
 
+
+// this is for getting the acks, not sure if Select is needed/how select is used properly. 
+  if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
+				&their_addr, &addr_len ) ) == -1 ) {
+      perror( "recvfrom" );
+      exit( 1 );
+    }
+
+
+ struct packet* ack;
+  ack = (struct packet*) packetBuf;
+ printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", ack->dPacket.seqNum,
+	    ack->dPacket.type, ack->dPacket.dataLength );
+}
   fclose( fp );
   close( sockfd );
 

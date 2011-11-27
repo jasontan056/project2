@@ -54,7 +54,7 @@ word16 checksum(byte *addr, word32 count)
   // Main summing loop
   while(count > 1)
   {
-    sum = sum + *((word16 *) addr)++;
+    sum = sum + *(word16 *) addr++;
     count = count - 2;
   }
 
