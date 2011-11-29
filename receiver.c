@@ -121,21 +121,20 @@ int main( int argc, char *argv[] )
       fprintf( stderr, "Received packet fails checksum\n" );
     }
 
-   //if the packet we received is what we expected, send ACK with new seqNum we want.
-   if(ack.dPacket.seqNum == p->dPacket.seqNum){
-	ack.dPacket.seqNum++;
-	 if ( ( numbytes = sendto( sockfd,(char *) &ack, sizeof (struct packet), 0,
-				    (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 ) {
-	    perror("sendto");
-	    exit(1);
-	  }
+   // GBN, if we get a packet in order, increment ack, write packet to file, otherwise discard the out of order packet and resend the duplicate ack.
+	if(ack.dPacket.seqNum == p->dPacket.seqNum)
+	{
+		ack.dPacket.seqNum++;
+		printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum, p->dPacket.type, p->dPacket.dataLength );
+	    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
+		p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
+	}
+	 if ( ( numbytes = sendto( sockfd,(char *) &ack, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
+		 	{
+			    perror("sendto");
+			    exit(1);
+			  }
 
-}
-
-    printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum,
-	    p->dPacket.type, p->dPacket.dataLength );
-    fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
-	    p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
 
     if ( p->dPacket.type == 2 ) {
       break;
