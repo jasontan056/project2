@@ -38,7 +38,12 @@ int main( int argc, char *argv[] )
  int ackPack [MAXACKPACK];
  struct packet packetArray [MAXSENTPACK];
   struct packet p;
+int i;
+	for (i=0;i<MAXSENTPACK; i++)
+{
+	packetArray[i].dPacket.type = -1;
 
+}
   // arguments:
   // portnumber, CWnd, Pl, PC
   if ( argc != 5 ) {
@@ -100,7 +105,7 @@ while( !feof( fp ))
 //this is the window count for packets sent
   while ( count < cwnd ) {
     // build packet
-    if(packetArray[seqNum] == NULL)
+    if(packetArray[seqNum].dPacket.type == -1)
 	{
 	    p.dPacket.dataLength = fread( p.dPacket.data, sizeof( p.dPacket.data[0] ),
 					  MAXDATALENGTH/sizeof( p.dPacket.data[0] ), fp );
@@ -116,6 +121,7 @@ while( !feof( fp ))
 	else
 	{
 		//pull info from the buffer in the event that seqNum is some already sent packet.
+		printf("we are pulling from the buffer\n");
 		p = packetArray[seqNum];
 	}
 
@@ -123,6 +129,7 @@ while( !feof( fp ))
 // this is the packet buffer.
     packetArray[seqNum] = p;
     // send packet
+	sleep(5);
     if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) {
       perror("sendto");
       exit(1);
@@ -130,7 +137,7 @@ while( !feof( fp ))
     count++;
     seqNum++;
 	// this is for getting the acks, not sure if Select is needed/how select is used properly, subtract the count as you receive ACKS.
-	  if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
+	 if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
 					&their_addr, &addr_len ) ) == -1 ) {
 	      perror( "recvfrom" );
 	      exit( 1 );
@@ -157,6 +164,10 @@ while( !feof( fp ))
   }
 
 }
+ if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) {
+      perror("sendto");
+      exit(1);
+    }
   fclose( fp );
   close( sockfd );
 

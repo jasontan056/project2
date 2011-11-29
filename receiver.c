@@ -34,6 +34,7 @@ int main( int argc, char *argv[] )
   char packetBuf[ sizeof( struct packet ) ];
   struct packet* p;
   socklen_t addr_len;
+  int prob =0;
   
   // arguments:
   // sender_hostname, sender_portnumber, filename
@@ -124,10 +125,14 @@ int main( int argc, char *argv[] )
    // GBN, if we get a packet in order, increment ack, write packet to file, otherwise discard the out of order packet and resend the duplicate ack.
 	if(ack.dPacket.seqNum == p->dPacket.seqNum)
 	{
-		ack.dPacket.seqNum++;
+		if(ack.dPacket.seqNum != 2 || prob == 1){
+			ack.dPacket.seqNum++;
 		printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum, p->dPacket.type, p->dPacket.dataLength );
-	    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
-		p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
+		    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
+			p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
+		}
+		else if(prob == 0)
+			prob = 1;
 	}
 	 if ( ( numbytes = sendto( sockfd,(char *) &ack, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
 		 	{
@@ -135,8 +140,8 @@ int main( int argc, char *argv[] )
 			    exit(1);
 			  }
 
-
     if ( p->dPacket.type == 2 ) {
+ 
       break;
     }
   }
