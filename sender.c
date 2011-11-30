@@ -9,12 +9,22 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
+#include <sys/time.h>
+#include <signal.h>
 #include "checksum.c"
 #include "packetstruct.h"
 
 #define MAXBUFLEN 100
 #define MAXACKPACK 1000
 #define MAXSENTPACK 1000
+volatile sig_atomic_t timed_out = 0;
+
+void catch_alarm( int sig)
+{
+	timed_out = 1;
+	signal(sig,catch_alarm);
+
+}
 
 void error(char *msg)
 {
@@ -36,6 +46,7 @@ int main( int argc, char *argv[] )
   socklen_t addr_len;
    int cwnd = atoi(argv[2]);
  int ackPack [MAXACKPACK];
+  int timedPacket = 0;
  struct packet packetArray [MAXSENTPACK];
   struct packet p;
 int i;
@@ -43,6 +54,10 @@ int i;
 {
 	packetArray[i].dPacket.type = -1;
 
+}
+for(i = 0; i<MAXACKPACK; i++)
+{
+	ackPack[i] = 0;
 }
   // arguments:
   // portnumber, CWnd, Pl, PC
@@ -99,70 +114,102 @@ int i;
 
   seqNum = 0;
   // sends file in packets
+   int count = 0;
+    struct timeval tv;
+    fd_set readfds;
+
+    tv.tv_sec = 1;
+    tv.tv_usec = 000000;
+    FD_ZERO(&readfds);
+    FD_SET(sockfd, &readfds);
 while( !feof( fp ))
 {
-   int count = 0;
 //this is the window count for packets sent
-  while ( count < cwnd ) {
-    // build packet
-    if(packetArray[seqNum].dPacket.type == -1)
-	{
-	    p.dPacket.dataLength = fread( p.dPacket.data, sizeof( p.dPacket.data[0] ),
-					  MAXDATALENGTH/sizeof( p.dPacket.data[0] ), fp );
-	    p.dPacket.seqNum =  seqNum;
-	    if ( feof( fp ) ) {
-	      p.dPacket.type = 2;
-	      printf( "last seqnum is = %i\n", seqNum );
-		break;
-	    } else {
-	      p.dPacket.type = 0;
-	    }
-	}
-	else
-	{
-		//pull info from the buffer in the event that seqNum is some already sent packet.
-		printf("we are pulling from the buffer\n");
-		p = packetArray[seqNum];
-	}
+	  while ( count < cwnd ) {
+	    // build packet
+		  //  printf("count is %i\n",count);
+		    if(packetArray[seqNum].dPacket.type == -1)
+			{
+			    p.dPacket.dataLength = fread( p.dPacket.data, sizeof( p.dPacket.data[0] ),
+							  MAXDATALENGTH/sizeof( p.dPacket.data[0] ), fp );
+			    p.dPacket.seqNum =  seqNum;			
+			    if ( feof( fp ) ) {
+			      p.dPacket.type = 2;
+			      printf( "last seqnum is = %i\n", seqNum );
+				break;
+			    } else {
+			      p.dPacket.type = 0;
+			    }
+			}
+			else
+			{
+				//pull info from the buffer in the event that seqNum is some already sent packet.
+				printf("we are pulling from the buffer\n");
+				p = packetArray[seqNum];
+			}
 
-    p.checksum = checksum( (byte*) &(p.dPacket), sizeof( p.dPacket ) );
-// this is the packet buffer.
-    packetArray[seqNum] = p;
-    // send packet
-	sleep(5);
-    if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) {
-      perror("sendto");
-      exit(1);
-    }
-    count++;
-    seqNum++;
-	// this is for getting the acks, not sure if Select is needed/how select is used properly, subtract the count as you receive ACKS.
-	 if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
-					&their_addr, &addr_len ) ) == -1 ) {
-	      perror( "recvfrom" );
-	      exit( 1 );
-	    }
-	else
-	{
-		count--;
-		struct packet* ack;
-		ack = (struct packet*) packetBuf;
-		//check for duplicate ACK
-		if (ackPack[ack->dPacket.seqNum] == 1 ) 
-		{
-			count = 0; //reset the window
-			seqNum = ack->dPacket.seqNum; //reset the seqNum
-			//resend the entire window because we received a duplicate ACK and thus a
-		printf( "DUPLICATE ACK:\nseqNum = %i\ntype = %i\ndataLength = %i\n", ack->dPacket.seqNum, ack->dPacket.type, ack->dPacket.dataLength );
+		    p.checksum = checksum( (byte*) &(p.dPacket), sizeof( p.dPacket ) );
+		// this is the packet buffer.
+		    packetArray[seqNum] = p;
+		    // send packet
+		    if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) {
+		      perror("sendto");
+		      exit(1);
+		    }
+		   printf("just sent packet %i\n",seqNum);
+		signal(SIGALRM, catch_alarm);
+		    if(count == 0)
+		    	alarm (5);
+		    count++;
+		    seqNum++;
 		}
+
+
+
+    // don't care about writefds and exceptfds:
+    select(sockfd+1, &readfds, NULL, NULL, &tv);
+
+	// this is for getting the acks, not sure if Select is needed/how select is used properly, subtract the count as you receive ACKS.
+	if(FD_ISSET(sockfd,&readfds)){	
+		 if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
+						&their_addr, &addr_len ) ) == -1 ) {
+		      perror( "recvfrom" );
+		      exit( 1 );
+		    }
 		else
 		{
-   			ackPack[seqNum] = 1;
+			count--;
+			struct packet* ack;
+			ack = (struct packet*) packetBuf;
+			//check for duplicate ACK
+			if (ackPack[ack->dPacket.seqNum] == 1 ) 
+			{
+				count = 0; //reset the window
+				seqNum = ack->dPacket.seqNum; //reset the seqNum
+				//resend the entire window because we received a duplicate ACK and thus a
+			printf( "DUPLICATE ACK:\nseqNum = %i\ntype = %i\ndataLength = %i\n", ack->dPacket.seqNum, ack->dPacket.type, ack->dPacket.dataLength );
+			}
+   			ackPack[ack->dPacket.seqNum] = 1;
 			printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", ack->dPacket.seqNum, ack->dPacket.type, ack->dPacket.dataLength );
 		}
 	}
-  }
+	if (timed_out == 1 && ackPack[timedPacket] == 0)
+		{
+			count = 0;
+			seqNum = timedPacket;
+			printf( "LOST ACK:\n");
+			timed_out = 0;
+			//alarm (5);
 
+		}
+	else if (timed_out == 1 && ackPack[timedPacket] == 1)
+		{
+		timedPacket = seqNum;
+		timed_out= 0;			
+		printf( "TIMEOUT RECEIVED ACK");
+		//alarm(5);
+		}
+	
 }
  if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) {
       perror("sendto");

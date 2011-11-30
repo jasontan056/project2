@@ -104,46 +104,53 @@ int main( int argc, char *argv[] )
   ack.dPacket.seqNum = 0;
   ack.dPacket.type = 1; 
   ack.dPacket.dataLength = 0;
+  struct timeval tv;
+    fd_set readfds;
 
+    tv.tv_sec = 1;
+    tv.tv_usec = 000000;
+    FD_ZERO(&readfds);
+    FD_SET(sockfd, &readfds);
 
   while ( 1 ) {
-    if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
-				&their_addr, &addr_len ) ) == -1 ) {
-      perror( "recvfrom" );
-      exit( 1 );
-    }
-    if ( numbytes != sizeof( struct packet ) ) {
-      fprintf( stderr, "Received packet is not the right size\n" );
-      continue;
-    }
 
-    p = (struct packet*) packetBuf;
-    if ( p->checksum != checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ) ) {
-      fprintf( stderr, "Received packet fails checksum\n" );
-    }
+    // don't care about writefds and exceptfds:
+    select(sockfd+1, &readfds, NULL, NULL, &tv);
+	if(FD_ISSET(sockfd,&readfds)){	
+		    if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
+						&their_addr, &addr_len ) ) == -1 ) {
+		      perror( "recvfrom" );
+		      exit( 1 );
+		    }
+		    if ( numbytes != sizeof( struct packet ) ) {
+		      fprintf( stderr, "Received packet is not the right size\n" );
+		      continue;
+		    }
 
-   // GBN, if we get a packet in order, increment ack, write packet to file, otherwise discard the out of order packet and resend the duplicate ack.
-	if(ack.dPacket.seqNum == p->dPacket.seqNum)
-	{
-		if(ack.dPacket.seqNum != 2 || prob == 1){
-			ack.dPacket.seqNum++;
-		printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum, p->dPacket.type, p->dPacket.dataLength );
-		    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
-			p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
-		}
-		else if(prob == 0)
-			prob = 1;
+		    p = (struct packet*) packetBuf;
+		    if ( p->checksum != checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ) ) {
+		      fprintf( stderr, "Received packet fails checksum\n" );
+		    }
+
+		   // GBN, if we get a packet in order, increment ack, write packet to file, otherwise discard the out of order packet and resend the duplicate ack.
+			if(ack.dPacket.seqNum == p->dPacket.seqNum)
+			{
+				printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum, p->dPacket.type, p->dPacket.dataLength );
+				    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
+					p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
+
+			}
+			 if ( ( numbytes = sendto( sockfd,(char *) &ack, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
+				 	{
+					    perror("sendto");
+					    exit(1);
+					  }
+					ack.dPacket.seqNum++;
+		    if ( p->dPacket.type == 2 ) {
+		 
+		      break;
+		    }
 	}
-	 if ( ( numbytes = sendto( sockfd,(char *) &ack, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
-		 	{
-			    perror("sendto");
-			    exit(1);
-			  }
-
-    if ( p->dPacket.type == 2 ) {
- 
-      break;
-    }
   }
   fclose( fp );
   close( sockfd );
