@@ -122,7 +122,10 @@ for(i = 0; i<MAXACKPACK; i++)
     tv.tv_usec = 000000;
     FD_ZERO(&readfds);
     FD_SET(sockfd, &readfds);
-while( !feof( fp ))
+struct packet* ack;
+ack = (struct packet*) packetBuf;
+ack->dPacket.seqNum = 0;
+while( /*!feof( fp )*/ seqNum -1 != ack->dPacket.seqNum )
 {
 //this is the window count for packets sent
 	  while ( count < cwnd ) {
@@ -136,6 +139,15 @@ while( !feof( fp ))
 			    if ( feof( fp ) ) {
 			      p.dPacket.type = 2;
 			      printf( "last seqnum is = %i\n", seqNum );
+			      count = cwnd;
+				p.checksum = checksum( (byte*) &(p.dPacket), sizeof( p.dPacket ) );
+				// this is the packet buffer.
+				    packetArray[seqNum] = p;
+				    // send packet
+				    if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) {
+				      perror("sendto");
+				      exit(1);
+				    }
 				break;
 			    } else {
 			      p.dPacket.type = 0;
@@ -143,6 +155,8 @@ while( !feof( fp ))
 			}
 			else
 			{
+				if(p.dPacket.type == 2 )
+					break;
 				//pull info from the buffer in the event that seqNum is some already sent packet.
 				printf("we are pulling from the buffer\n");
 				p = packetArray[seqNum];
@@ -179,8 +193,8 @@ while( !feof( fp ))
 		else
 		{
 			count--;
-			struct packet* ack;
-			ack = (struct packet*) packetBuf;
+			//struct packet* ack;
+			//ack = (struct packet*) packetBuf;
 			//check for duplicate ACK
 			if (ackPack[ack->dPacket.seqNum] == 1 ) 
 			{
@@ -211,10 +225,10 @@ while( !feof( fp ))
 		}
 	
 }
- if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) {
+/* if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) {
       perror("sendto");
       exit(1);
-    }
+    }*/
   fclose( fp );
   close( sockfd );
 

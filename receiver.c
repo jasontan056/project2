@@ -133,7 +133,7 @@ int main( int argc, char *argv[] )
 		    }
 
 		   // GBN, if we get a packet in order, increment ack, write packet to file, otherwise discard the out of order packet and resend the duplicate ack.
-			if(ack.dPacket.seqNum == p->dPacket.seqNum)
+			if(ack.dPacket.seqNum == p->dPacket.seqNum &&  p->checksum == checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ))
 			{
 				printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum, p->dPacket.type, p->dPacket.dataLength );
 				    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
