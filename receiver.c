@@ -34,6 +34,7 @@ int main( int argc, char *argv[] )
   char packetBuf[ sizeof( struct packet ) ];
   struct packet* p;
   socklen_t addr_len;
+  int tempPack = 0;
 
   
   // arguments:
@@ -107,13 +108,13 @@ int main( int argc, char *argv[] )
 	struct timeval tv;
 	fd_set readfds;
 
-	tv.tv_sec = 1;
+	
+
+  while ( 1 ) {
+	tv.tv_sec = 5;
 	tv.tv_usec = 000000;
 	FD_ZERO(&readfds);
 	FD_SET(sockfd, &readfds);
-
-  while ( 1 ) {
-
     // don't care about writefds and exceptfds:
     select(sockfd+1, &readfds, NULL, NULL, &tv);
 	if(FD_ISSET(sockfd,&readfds)){	
@@ -129,10 +130,12 @@ int main( int argc, char *argv[] )
 			p = (struct packet*) packetBuf;
 			if ( p->checksum != checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ) )
 				fprintf( stderr, "Received packet fails checksum\n" );
-
+			
+			printf("we are waiting for %i and we are getting %i\n",expectedPacket.dPacket.seqNum,p->dPacket.seqNum);
 			// GBN, if we get a packet in order, write packet to file, otherwise discard the out of order packet and resend the duplicate ack, then increment expected packet.
 			if(expectedPacket.dPacket.seqNum == p->dPacket.seqNum &&  p->checksum == checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ))
 			{
+				expectedPacket.dPacket.type = p->dPacket.type;
 				printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum, p->dPacket.type, p->dPacket.dataLength );
 			    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
 				p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
@@ -141,16 +144,23 @@ int main( int argc, char *argv[] )
 				    perror("sendto");
 				    exit(1);
 				}
-				expectedPacket.dPacket.seqNum++;		
+				expectedPacket.dPacket.seqNum++;
+				tempPack++;	
 			}
 			else
 			{
-				expectedPacket.dPacket.seqNum--;
-				 if ( ( numbytes = sendto( sockfd,(char *) &expectedPacket, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
-				{
-				    perror("sendto");
-				    exit(1);
+				if(expectedPacket.dPacket.seqNum == p->dPacket.seqNum-1){
+					 tempPack = expectedPacket.dPacket.seqNum;
+					expectedPacket.dPacket.seqNum--;
+					 if ( ( numbytes = sendto( sockfd,(char *) &expectedPacket, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
+					{
+					    perror("sendto");
+					    exit(1);
+					}
 				}
+				//printf("we are waiting for %i and we are getting %i\n",expectedPacket.dPacket.seqNum,p->dPacket.seqNum);
+				
+				expectedPacket.dPacket.seqNum = tempPack;
 			}
 			if ( p->dPacket.type == 2 )
 			break;

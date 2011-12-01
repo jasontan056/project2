@@ -53,6 +53,9 @@ int main( int argc, char *argv[] )
 	struct packet* ack;
 	struct packet packetArray [MAXSENTPACK];
 	struct packet p;
+	int prob = 0;
+	int noSeq = 0;
+	int timeSig = 0;
 
 	//initialize the packet buffer and the ack packet bitmap, this is currently static and should be either dynamic or set to a very high level.
 	memset(packetArray,0, sizeof(packetArray));
@@ -126,7 +129,7 @@ int main( int argc, char *argv[] )
 	ack = (struct packet*) packetBuf;
 	ack->dPacket.seqNum = 0;
 
-	while(seqNum -1 != ack->dPacket.seqNum )
+	while(ack->dPacket.type!=2 )
 	{
 	//this is the while loop that deals with the window
 		  while ( count < cwnd ) {
@@ -167,17 +170,26 @@ int main( int argc, char *argv[] )
 				// store the packet in the packetArray buffer
 				packetArray[seqNum] = p;
 				// send packet
+				if(seqNum == 2 && prob == 0){
+					noSeq = 1;
+					prob = 1;}
+				sleep(1);
+				if(noSeq == 0){
 				if ( sendto( sockfd, (char*) &p, sizeof(p), 0, &their_addr, sizeof( their_addr ) ) == -1 ) 
 				{
 					perror("sendto");
 					exit(1);
 				}
 				printf("just sent packet %i\n",seqNum);
-
+				}
+				noSeq = 0;
+				
 				//this is the timer, it is currently set to 5 seconds. 'count' signals the beginning of a new window.
 				signal(SIGALRM, catch_alarm);
-				if(count == 0)
-					alarm (5);
+				if(timeSig == 0){
+					alarm (10);
+					timeSig = 1;
+				}
 				count++;
 				seqNum++;
 			}
@@ -203,7 +215,7 @@ int main( int argc, char *argv[] )
 						//reset the window
 						count = 0;
 						//reset the seqNum
-						seqNum = ack->dPacket.seqNum;
+						seqNum = ack->dPacket.seqNum+1;
 						//resend the entire window because we received a duplicate ACK and thus a
 						printf( "DUPLICATE ACK:\nseqNum = %i\ntype = %i\ndataLength = %i\n", ack->dPacket.seqNum, ack->dPacket.type, ack->dPacket.dataLength );
 					}
@@ -213,16 +225,17 @@ int main( int argc, char *argv[] )
 			}
 			if (timed_out == 1 && ackPack[timedPacket] == 0)
 			{
-				count = 0;
+				timeSig = 0;
 				seqNum = timedPacket;
 				printf( "LOST ACK\n");
 				timed_out = 0;
 			}
 			else if (timed_out == 1 && ackPack[timedPacket] == 1)
 			{
+				timeSig = 0;
 				timedPacket = seqNum;
 				timed_out= 0;			
-				printf( "TIMEOUT, RECEIVED ACK");
+				printf( "TIMEOUT, RECEIVED ACK timePacket is %i\n",timedPacket);
 			}
 
 	}
