@@ -34,7 +34,7 @@ int main( int argc, char *argv[] )
   char packetBuf[ sizeof( struct packet ) ];
   struct packet* p;
   socklen_t addr_len;
-  int prob =0;
+
   
   // arguments:
   // sender_hostname, sender_portnumber, filename
@@ -100,56 +100,60 @@ int main( int argc, char *argv[] )
   // receives packets, writing them to the file
 
 
-  struct packet ack;
-  ack.dPacket.seqNum = 0;
-  ack.dPacket.type = 1; 
-  ack.dPacket.dataLength = 0;
-  struct timeval tv;
-    fd_set readfds;
+	struct packet expectedPacket;
+	expectedPacket.dPacket.seqNum = 0;
+	expectedPacket.dPacket.type = 1; 
+	expectedPacket.dPacket.dataLength = 0;
+	struct timeval tv;
+	fd_set readfds;
 
-    tv.tv_sec = 1;
-    tv.tv_usec = 000000;
-    FD_ZERO(&readfds);
-    FD_SET(sockfd, &readfds);
+	tv.tv_sec = 1;
+	tv.tv_usec = 000000;
+	FD_ZERO(&readfds);
+	FD_SET(sockfd, &readfds);
 
   while ( 1 ) {
 
     // don't care about writefds and exceptfds:
     select(sockfd+1, &readfds, NULL, NULL, &tv);
 	if(FD_ISSET(sockfd,&readfds)){	
-		    if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0,
-						&their_addr, &addr_len ) ) == -1 ) {
-		      perror( "recvfrom" );
-		      exit( 1 );
-		    }
-		    if ( numbytes != sizeof( struct packet ) ) {
-		      fprintf( stderr, "Received packet is not the right size\n" );
-		      continue;
-		    }
+		    if ( ( numbytes = recvfrom( sockfd, packetBuf, sizeof( struct packet ), 0, &their_addr, &addr_len ) ) == -1 ) 
+			{
+				perror( "recvfrom" );
+				exit( 1 );
+			}
+			if ( numbytes != sizeof( struct packet ) ) {
+				fprintf( stderr, "Received packet is not the right size\n" );
+				continue;
+			}
+			p = (struct packet*) packetBuf;
+			if ( p->checksum != checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ) )
+				fprintf( stderr, "Received packet fails checksum\n" );
 
-		    p = (struct packet*) packetBuf;
-		    if ( p->checksum != checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ) ) {
-		      fprintf( stderr, "Received packet fails checksum\n" );
-		    }
-
-		   // GBN, if we get a packet in order, increment ack, write packet to file, otherwise discard the out of order packet and resend the duplicate ack.
-			if(ack.dPacket.seqNum == p->dPacket.seqNum &&  p->checksum == checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ))
+			// GBN, if we get a packet in order, write packet to file, otherwise discard the out of order packet and resend the duplicate ack, then increment expected packet.
+			if(expectedPacket.dPacket.seqNum == p->dPacket.seqNum &&  p->checksum == checksum( (byte*) &(p->dPacket), sizeof( p->dPacket) ))
 			{
 				printf( "received:\nseqNum = %i\ntype = %i\ndataLength = %i\n", p->dPacket.seqNum, p->dPacket.type, p->dPacket.dataLength );
-				    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
-					p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
-
+			    	fwrite( p->dPacket.data, sizeof( p->dPacket.data[0] ),
+				p->dPacket.dataLength/sizeof( p->dPacket.data[0] ), fp );
+				if ( ( numbytes = sendto( sockfd,(char *) &expectedPacket, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
+				{
+				    perror("sendto");
+				    exit(1);
+				}
+				expectedPacket.dPacket.seqNum++;		
 			}
-			 if ( ( numbytes = sendto( sockfd,(char *) &ack, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
-				 	{
-					    perror("sendto");
-					    exit(1);
-					  }
-					ack.dPacket.seqNum++;
-		    if ( p->dPacket.type == 2 ) {
-		 
-		      break;
-		    }
+			else
+			{
+				expectedPacket.dPacket.seqNum--;
+				 if ( ( numbytes = sendto( sockfd,(char *) &expectedPacket, sizeof (struct packet), 0, (struct sockaddr*) &send_addr, sizeof( send_addr ) ) ) == -1 )
+				{
+				    perror("sendto");
+				    exit(1);
+				}
+			}
+			if ( p->dPacket.type == 2 )
+			break;
 	}
   }
   fclose( fp );
